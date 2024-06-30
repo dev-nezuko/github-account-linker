@@ -1,7 +1,3 @@
-import dotenv from 'dotenv';
-
-dotenv.config();
-
 const readEnv = (keys: string[], fallback?: string): string => {
   for (const key of keys) {
     const value = process.env[key];

@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import expressAsyncHandler from 'express-async-handler';
 import {
   initiateGitHubOAuth,
   handleGitHubOAuthCallback,
@@ -10,10 +9,10 @@ import {
 
 const router = Router();
 
-router.get('/connect', expressAsyncHandler(initiateGitHubOAuth));
-router.get('/callback', expressAsyncHandler(handleGitHubOAuthCallback));
-router.get('/status', expressAsyncHandler(checkStatus));
-router.delete('/remove', expressAsyncHandler(removeIntegration));
-router.post('/logout', expressAsyncHandler(endSession));
+router.get('/connect', initiateGitHubOAuth);
+router.get('/callback', handleGitHubOAuthCallback);
+router.get('/status', checkStatus);
+router.delete('/remove', removeIntegration);
+router.post('/logout', endSession);
 
 export default router;
