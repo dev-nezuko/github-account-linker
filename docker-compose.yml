@@ -1,0 +1,59 @@
+# Local stack: MongoDB, a mock of GitHub's OAuth endpoints, the API and the SPA behind nginx.
+# Open http://localhost:4200. Set the GITHUB_* variables in .env to use a real OAuth app instead.
+services:
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mock-github:
+    image: node:22-bookworm-slim
+    command: ["node", "/mock/server.mjs"]
+    volumes:
+      - ./mock-github:/mock:ro
+    environment:
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-demo-client-id}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-demo-client-secret}
+      OAUTH_CALLBACK_URL: http://localhost:4200/api/github/callback
+    ports:
+      - "127.0.0.1:4010:4010"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4010/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build: ./backend
+    environment:
+      DB_URL: mongodb://mongo:27017/github_linker
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?Set TOKEN_ENCRYPTION_KEY in .env (openssl rand -hex 32)}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-demo-client-id}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-demo-client-secret}
+      # The browser follows the authorize URL; the API calls the other two itself.
+      GITHUB_AUTHORIZE_URL: ${GITHUB_AUTHORIZE_URL:-http://localhost:4010/login/oauth/authorize}
+      GITHUB_TOKEN_URL: ${GITHUB_TOKEN_URL:-http://mock-github:4010/login/oauth/access_token}
+      GITHUB_API_BASE_URL: ${GITHUB_API_BASE_URL:-http://mock-github:4010}
+      OAUTH_CALLBACK_URL: http://localhost:4200/api/github/callback
+      FRONTEND_URL: http://localhost:4200/github-integration
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mock-github:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:4200:4200"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  mongo-data:
