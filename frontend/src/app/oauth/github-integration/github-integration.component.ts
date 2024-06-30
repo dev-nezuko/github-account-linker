@@ -1,43 +1,91 @@
-import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
-import { GithubAuthService } from '../github-auth.service';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
+import { ActivatedRoute, Router } from '@angular/router';
+import { Observable } from 'rxjs';
+import { ConnectionStatus, GithubAuthService } from '../github-auth.service';
 
-const CALLBACK_ERRORS: Record<string, string> = {
+export type ConnectionView = 'loading' | 'disconnected' | 'connected' | 'unreachable';
+
+export const CALLBACK_ERRORS: Record<string, string> = {
   access_denied: 'GitHub authorization was cancelled. Nothing was linked.',
   invalid_state: 'That sign-in attempt expired or did not start here. Start connecting again.',
+  invalid_callback: 'GitHub sent an incomplete response. Start connecting again.',
+  oauth_failed: 'GitHub authorization failed. Try connecting again.',
 };
 
 @Component({
   selector: 'app-github-integration',
   templateUrl: './github-integration.component.html',
   styleUrls: ['./github-integration.component.css'],
-  changeDetection: ChangeDetectionStrategy.Eager,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DatePipe],
 })
 export class GithubIntegrationComponent implements OnInit {
-  isConnected = false;
-  connectionDate: string | null = null;
-  username: string | null = null;
-  error = '';
-  loading = false;
-  constructor(private githubAuthService: GithubAuthService) {}
+  private readonly auth = inject(GithubAuthService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+
+  readonly view = signal<ConnectionView>('loading');
+  readonly username = signal<string | null>(null);
+  readonly connectedAt = signal<string | null>(null);
+  readonly pending = signal<'remove' | 'signout' | null>(null);
+  readonly error = signal('');
+  readonly initial = computed(() => (this.username() ?? '?').charAt(0).toUpperCase());
+
   ngOnInit(): void {
-    // Discard credentials from the former URL/localStorage flow without reading or reusing them.
+    // Tokens from the old URL/localStorage flow are discarded without being read.
     localStorage.removeItem('accessToken');
-    const url = new URL(window.location.href);
-    const callbackError = url.searchParams.get('error');
-    if (callbackError) this.error = CALLBACK_ERRORS[callbackError] ?? 'GitHub authorization failed. Try connecting again.';
-    if (url.search) window.history.replaceState(null, '', url.pathname);
-    this.githubAuthService.getStatus().subscribe({next: status => {this.isConnected = status.isConnected;this.username = status.username ?? null;this.connectionDate = status.connectionDate;}, error: failure => {if (failure.status !== 401) this.error = 'Could not reach the local API. Check that it is running.';}});
+    const callbackError = this.route.snapshot.queryParamMap.get('error');
+    if (callbackError) {
+      this.error.set(CALLBACK_ERRORS[callbackError] ?? CALLBACK_ERRORS['oauth_failed']);
+      void this.router.navigate([], {queryParams: {}, replaceUrl: true});
+    }
+    this.refresh();
   }
-  connect(): void {this.githubAuthService.connect();}
-  removeIntegration(): void {
-    this.loading = true;this.error = '';
-    this.githubAuthService.removeIntegration().subscribe({next: () => this.clearConnection(), error: () => {this.loading = false;this.error = 'Could not revoke the connection. Please try again.';}});
+
+  refresh(): void {
+    this.view.set('loading');
+    this.auth.getStatus().subscribe({
+      next: status => this.show(status),
+      error: (failure: HttpErrorResponse) => {
+        if (failure.status === 401) this.show(null);
+        else this.view.set('unreachable');
+      },
+    });
   }
+
+  connect(): void {
+    this.auth.connect();
+  }
+
   signOut(): void {
-    this.loading = true;this.error = '';
-    this.githubAuthService.signOut().subscribe({next: () => this.clearConnection(), error: () => {this.loading = false;this.error = 'Could not sign out. Please try again.';}});
+    this.run('signout', this.auth.signOut(), 'Could not sign out. Please try again.');
   }
-  private clearConnection(): void {
-    this.isConnected = false;this.username = null;this.connectionDate = null;this.loading = false;
+
+  removeIntegration(): void {
+    this.run('remove', this.auth.removeIntegration(), 'Could not revoke the connection. GitHub did not confirm it, so the link was kept.');
+  }
+
+  private run(action: 'remove' | 'signout', request: Observable<unknown>, failure: string): void {
+    this.pending.set(action);
+    this.error.set('');
+    request.subscribe({
+      next: () => {
+        this.pending.set(null);
+        this.show(null);
+      },
+      error: () => {
+        this.pending.set(null);
+        this.error.set(failure);
+      },
+    });
+  }
+
+  private show(status: ConnectionStatus | null): void {
+    const linked = Boolean(status?.isConnected);
+    this.username.set(linked ? (status?.username ?? null) : null);
+    this.connectedAt.set(linked ? (status?.connectionDate ?? null) : null);
+    this.view.set(linked ? 'connected' : 'disconnected');
   }
 }

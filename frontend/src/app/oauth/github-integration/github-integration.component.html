@@ -1,27 +1,103 @@
-<main class="integration-page">
-  <p class="eyebrow">ACCOUNT CONNECTION DEMO</p>
-  <h1>Your GitHub connection,<br />in one place.</h1>
-  <p class="intro">An Angular and Express prototype for authorizing a GitHub profile, checking its connection, and revoking access.</p>
-  <section class="connection-card">
-    <div class="card-heading"><h2>GitHub</h2><span class="status">{{ isConnected ? 'Connected' : 'Not connected' }}</span></div>
-    @if (!isConnected) {
-      <p>Connect an account to inspect its connection status. The app requests profile access, not repository synchronization.</p>
+<header class="topbar">
+  <span class="mark" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+      <path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1" />
+      <path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" />
+    </svg>
+  </span>
+  <span class="wordmark">Account Linker</span>
+  <span class="badge">local prototype</span>
+</header>
+
+<main class="layout">
+  <section class="lede">
+    <p class="kicker">GitHub identity</p>
+    <h1>Link a GitHub account without handing its token to the browser.</h1>
+    <p class="intro">
+      Authorize a profile with OAuth, see when it was linked, end the session or revoke the grant. Nothing from your
+      repositories is read or synchronised.
+    </p>
+  </section>
+
+  <section class="panel" aria-labelledby="panel-title" [attr.aria-busy]="view() === 'loading'">
+    <div class="panel-head">
+      <h2 id="panel-title">GitHub connection</h2>
+      <span class="pill" [class.pill-on]="view() === 'connected'" [class.pill-warn]="view() === 'unreachable'">
+        @switch (view()) {
+          @case ('connected') { Linked }
+          @case ('loading') { Checking }
+          @case ('unreachable') { Unknown }
+          @default { Not linked }
+        }
+      </span>
+    </div>
+
+    @switch (view()) {
+      @case ('loading') {
+        <p class="muted" role="status">Checking this browser's session&hellip;</p>
+        <div class="skeleton" aria-hidden="true"></div>
+      }
+      @case ('connected') {
+        <div class="identity">
+          <span class="avatar" aria-hidden="true">{{ initial() }}</span>
+          <div>
+            <p class="login">&#64;{{ username() }}</p>
+            @if (connectedAt(); as at) {
+              <p class="muted">Linked <time [attr.datetime]="at">{{ at | date: 'd MMM y, HH:mm' }}</time></p>
+            }
+          </div>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn btn-quiet" [disabled]="pending() !== null" (click)="signOut()">
+            {{ pending() === 'signout' ? 'Signing out…' : 'Sign out' }}
+          </button>
+          <button type="button" class="btn btn-danger" [disabled]="pending() !== null" (click)="removeIntegration()">
+            {{ pending() === 'remove' ? 'Revoking…' : 'Revoke and remove' }}
+          </button>
+        </div>
+        <p class="hint">
+          <strong>Sign out</strong> ends this browser's session and keeps the link.
+          <strong>Revoke and remove</strong> asks GitHub to invalidate the token, then deletes it here.
+        </p>
+      }
+      @case ('unreachable') {
+        <p role="alert" class="notice">The API did not answer, so the link status is unknown. Check that the backend is running.</p>
+        <div class="actions">
+          <button type="button" class="btn btn-quiet" (click)="refresh()">Try again</button>
+        </div>
+      }
+      @default {
+        <p>No account is linked in this browser. Connecting asks GitHub for one scope:</p>
+        <ul class="scopes">
+          <li><code>read:user</code> your public profile, to know which account is linked</li>
+          <li class="muted">No repository, organisation or private email access</li>
+        </ul>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" (click)="connect()">Connect GitHub</button>
+        </div>
+      }
     }
-    @if (isConnected) {
-      <p>Connected as {{ username }} on {{ connectionDate }}. No repository synchronization is performed.</p>
-    }
-    @if (!isConnected) {
-      <button class="primary" (click)="connect()">Connect GitHub</button>
-    }
-    @if (isConnected) {
-      <button class="danger" [disabled]="loading" (click)="removeIntegration()">{{ loading ? 'Working…' : 'Revoke and remove' }}</button>
-    }
-    @if (isConnected) {
-      <button class="quiet" [disabled]="loading" (click)="signOut()">Sign out</button>
-    }
-    @if (error) {
-      <p role="alert" class="error">{{ error }}</p>
+
+    @if (error()) {
+      <p role="alert" class="error">{{ error() }}</p>
     }
   </section>
-  <p class="note">Local development prototype · OAuth tokens stay on the API server. The browser uses an HttpOnly session cookie.</p>
+
+  <section class="flow" aria-labelledby="flow-title">
+    <h2 id="flow-title">What happens when you connect</h2>
+    <ol>
+      <li>
+        <strong>State and PKCE.</strong> The API stores a one-time state and an S256 code verifier in HttpOnly cookies,
+        then refuses any callback that does not carry the same state.
+      </li>
+      <li>
+        <strong>Server-side exchange.</strong> Only the API trades the code for a token. The token is sealed with
+        AES-256-GCM before it reaches MongoDB and never appears in a URL or in this page.
+      </li>
+      <li>
+        <strong>Hashed session.</strong> This browser gets a random HttpOnly session id for eight hours; the database keeps
+        only its SHA-256 hash, so a database dump cannot be replayed as a cookie.
+      </li>
+    </ol>
+  </section>
 </main>

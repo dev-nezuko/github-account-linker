@@ -1,2 +1,21 @@
-html, body { height: 100%; }
-body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+:root {
+  --paper: #f5f2ea;
+  --paper-raised: #fffdf8;
+  --wash: #ebe6da;
+  --line: #d9d2c3;
+  --ink: #1b1f1d;
+  --muted: #535c57;
+  --moss: #1f6247;
+  --moss-wash: #dcebe2;
+  --brick: #a1361f;
+  --brick-wash: #f7e3dc;
+  --brass: #845a12;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.6 var(--font-body); }
+:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }

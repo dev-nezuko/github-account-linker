@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
@@ -10,12 +10,23 @@ export interface ConnectionStatus {
 
 @Injectable({providedIn: 'root'})
 export class GithubAuthService {
-  private apiUrl = '/api/github';
-  constructor(private http: HttpClient) {}
-  connect(): void {window.location.href = `${this.apiUrl}/connect`;}
+  private readonly http = inject(HttpClient);
+  private readonly apiUrl = '/api/github';
+
+  // A full-page navigation: the API answers with a redirect to GitHub's consent screen.
+  connect(): void {
+    window.location.assign(`${this.apiUrl}/connect`);
+  }
+
   getStatus(): Observable<ConnectionStatus> {
     return this.http.get<ConnectionStatus>(`${this.apiUrl}/status`, {withCredentials: true});
   }
-  signOut(): Observable<void> {return this.http.post<void>(`${this.apiUrl}/logout`, null, {withCredentials: true});}
-  removeIntegration(): Observable<void> {return this.http.delete<void>(`${this.apiUrl}/remove`, {withCredentials: true});}
+
+  signOut(): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/logout`, null, {withCredentials: true});
+  }
+
+  removeIntegration(): Observable<{isConnected: false}> {
+    return this.http.delete<{isConnected: false}>(`${this.apiUrl}/remove`, {withCredentials: true});
+  }
 }
