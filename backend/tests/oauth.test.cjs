@@ -15,7 +15,7 @@ test('authorization uses random state, PKCE and profile scope only', () => {
  assert.equal(url.searchParams.get('state'),state.value);assert.equal(url.searchParams.get('code_challenge'),session.pkceChallenge(verifier.value));
  assert.equal(state.options.httpOnly,true);assert.notEqual(a.url,b.url);
  assert.equal(`${url.origin}${url.pathname}`,'http://oauth.test/login/oauth/authorize');
- assert.equal(url.searchParams.get('redirect_uri'),'http://localhost:3000/api/github/callback');
+ assert.equal(url.searchParams.get('redirect_uri'),'http://localhost:4200/api/github/callback');
 });
 test('callback rejects missing or mismatched state before token exchange', async () => {
  let exchanges=0;oauth.getGitHubOAuthToken=async()=>{exchanges++;throw Error('must not run')};
@@ -54,4 +54,12 @@ test('successful revocation deletes local records and clears only the app sessio
  axios.delete=async(url,options)=>{assert.equal(options.data.access_token,'synthetic-provider-fixture');return {status:204}};
  const res=response();await controller.removeIntegration({headers:{cookie:`${session.SESSION_COOKIE}=${value}`}},res);
  assert.deepEqual(deleted,['integration','user']);assert.equal(res.body.isConnected,false);assert.ok(res.cleared.includes(session.SESSION_COOKIE));
+});
+
+test('state-changing requests must come from the frontend origin', () => {
+ const {requireFrontendOrigin} = require('../dist/middleware/originGuard');
+ const run = (method, origin) => {let passed=false;const res=response();requireFrontendOrigin({method,get:()=>origin},res,()=>{passed=true});return {passed,res};};
+ assert.equal(run('GET',undefined).passed,true);
+ assert.equal(run('DELETE','http://localhost:4200').passed,true);
+ for (const origin of [undefined,'http://localhost:8080','http://localhost:4200.evil.test']) {const r=run('DELETE',origin);assert.equal(r.passed,false);assert.equal(r.res.statusCode,403);}
 });

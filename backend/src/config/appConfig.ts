@@ -22,7 +22,7 @@ const readUrl = (keys: string[], fallback: string): string => {
   return url.toString().replace(/\/$/, '');
 };
 
-const oauthCallbackUrl = readUrl(['OAUTH_CALLBACK_URL'], 'http://localhost:3000/api/github/callback');
+const oauthCallbackUrl = readUrl(['OAUTH_CALLBACK_URL'], 'http://localhost:4200/api/github/callback');
 const frontendUrl = readUrl(['FRONTEND_URL'], 'http://localhost:4200/github-integration');
 
 const appConfig = {
