@@ -7,7 +7,7 @@ export interface IIntegration extends Document {
 }
 
 const IntegrationSchema: Schema = new Schema({
-  userId: { type: mongoose.Types.ObjectId, required: true, ref: 'User' },
+  userId: { type: mongoose.Types.ObjectId, required: true, ref: 'User', unique: true },
   provider: { type: String, required: true },
   connectedAt: { type: Date, required: true },
 });

@@ -11,6 +11,7 @@ const CALLBACK_ERRORS: Record<string, string> = {
 export class GithubIntegrationComponent implements OnInit {
   isConnected = false;
   connectionDate: string | null = null;
+  username: string | null = null;
   error = '';
   loading = false;
   constructor(private githubAuthService: GithubAuthService, @Inject(PLATFORM_ID) private platformId: Object) {}
@@ -22,11 +23,18 @@ export class GithubIntegrationComponent implements OnInit {
     const callbackError = url.searchParams.get('error');
     if (callbackError) this.error = CALLBACK_ERRORS[callbackError] ?? 'GitHub authorization failed. Try connecting again.';
     if (url.search) window.history.replaceState(null, '', url.pathname);
-    this.githubAuthService.getStatus().subscribe({next: status => {this.isConnected = status.isConnected;this.connectionDate = status.connectionDate;}, error: failure => {if (failure.status !== 401) this.error = 'Could not reach the local API. Check that it is running.';}});
+    this.githubAuthService.getStatus().subscribe({next: status => {this.isConnected = status.isConnected;this.username = status.username ?? null;this.connectionDate = status.connectionDate;}, error: failure => {if (failure.status !== 401) this.error = 'Could not reach the local API. Check that it is running.';}});
   }
   connect(): void {this.githubAuthService.connect();}
   removeIntegration(): void {
     this.loading = true;this.error = '';
-    this.githubAuthService.removeIntegration().subscribe({next: () => {this.isConnected = false;this.connectionDate = null;this.loading = false;}, error: () => {this.loading = false;this.error = 'Could not revoke the connection. Please try again.';}});
+    this.githubAuthService.removeIntegration().subscribe({next: () => this.clearConnection(), error: () => {this.loading = false;this.error = 'Could not revoke the connection. Please try again.';}});
+  }
+  signOut(): void {
+    this.loading = true;this.error = '';
+    this.githubAuthService.signOut().subscribe({next: () => this.clearConnection(), error: () => {this.loading = false;this.error = 'Could not sign out. Please try again.';}});
+  }
+  private clearConnection(): void {
+    this.isConnected = false;this.username = null;this.connectionDate = null;this.loading = false;
   }
 }

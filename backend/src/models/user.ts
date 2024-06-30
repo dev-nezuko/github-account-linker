@@ -4,13 +4,13 @@ export interface IUser extends Document {
   username: string;
   githubId: string;
   accessToken: string;
-  sessionHash: string;
-  sessionExpiresAt: Date;
+  sessionHash?: string;
+  sessionExpiresAt?: Date;
 }
 
 const UserSchema: Schema = new Schema({
   username: { type: String, required: true },
-  githubId: { type: String, required: true },
+  githubId: { type: String, required: true, unique: true },
   accessToken: { type: String },
   sessionHash: {type: String, index: true},
   sessionExpiresAt: {type: Date},

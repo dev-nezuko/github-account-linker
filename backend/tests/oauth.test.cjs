@@ -10,7 +10,7 @@ const axios = require('axios').default;
 const User = require('../dist/models/user').default;
 const Integration = require('../dist/models/integration').default;
 const controller = require('../dist/controllers/github.controller');
-function response(){return {statusCode:200,cookies:[],cleared:[],status(value){this.statusCode=value;return this},json(value){this.body=value;return this},redirect(value){this.url=value;return this},cookie(name,value,options){this.cookies.push({name,value,options});return this},clearCookie(name){this.cleared.push(name);return this}};}
+function response(){return {statusCode:200,cookies:[],cleared:[],status(value){this.statusCode=value;return this},json(value){this.body=value;return this},redirect(value){this.url=value;return this},end(){this.ended=true;return this},cookie(name,value,options){this.cookies.push({name,value,options});return this},clearCookie(name){this.cleared.push(name);return this}};}
 test('authorization uses random state, PKCE and profile scope only', () => {
  const a=response();const b=response();controller.initiateGitHubOAuth({},a);controller.initiateGitHubOAuth({},b);
  const url = new URL(a.url);assert.equal(url.searchParams.get('scope'),'read:user');assert.equal(url.searchParams.get('code_challenge_method'),'S256');
@@ -43,8 +43,8 @@ test('a failed token exchange redirects with a generic error code', async () => 
 test('successful callback keeps OAuth token out of browser URL and cookie', async () => {
  const state=session.newNonce();const verifier=session.newNonce();const provider='synthetic-provider-fixture';
  oauth.getGitHubOAuthToken=async(code,redirect,value)=>{assert.equal(value,verifier);return provider};
- axios.get=async(url,options)=>{assert.equal(options.headers.Authorization,`Bearer ${provider}`);return {data:{id:'synthetic-id',login:'synthetic-user'}}};
- const user={_id:'synthetic-user-id',save:async()=>{}};User.findOne=async()=>user;Integration.updateOne=async()=>({});
+ axios.get=async(url,options)=>{assert.equal(options.headers.Authorization,`Bearer ${provider}`);return {data:{id:4242,login:'synthetic-user'}}};
+ const user={_id:'synthetic-user-id',save:async()=>{}};User.findOne=async query=>{assert.deepEqual(query,{githubId:'4242'});return user};Integration.updateOne=async()=>({});
  const res=response();await controller.handleGitHubOAuthCallback({headers:{cookie:`${session.STATE_COOKIE}=${state}; ${session.VERIFIER_COOKIE}=${verifier}`},query:{state,code:'synthetic-code'}},res);
  assert.equal(res.url,'http://localhost:4200/github-integration');assert.ok(!user.accessToken.includes(provider));assert.equal(cipher.decryptToken(user.accessToken,KEY),provider);
  const cookie=res.cookies.find(c=>c.name===session.SESSION_COOKIE);assert.equal(cookie.options.httpOnly,true);assert.equal(cookie.options.sameSite,'lax');assert.equal(user.sessionHash,session.sessionHash(cookie.value));
@@ -120,4 +120,26 @@ test('token exchange sends the PKCE verifier and rejects error payloads',async()
  assert.equal(body.code_verifier,'v'.repeat(64));assert.equal(body.redirect_uri,'http://localhost:4200/api/github/callback');
  axios.post=async()=>({data:{error:'bad_verification_code'}});
  await assert.rejects(exchangeToken('code-fixture','http://localhost:4200/api/github/callback','v'.repeat(64)));
+});
+
+test('status reports the linked username for a live session',async()=>{
+ const value=session.newNonce();User.findOne=async()=>({_id:'synthetic',username:'synthetic-user'});
+ const connectedAt=new Date('2026-01-02T03:04:05Z');Integration.findOne=async()=>({connectedAt});
+ const res=response();await controller.checkStatus({headers:{cookie:`${session.SESSION_COOKIE}=${value}`}},res);
+ assert.deepEqual(res.body,{isConnected:true,username:'synthetic-user',connectionDate:connectedAt});
+});
+test('callback refuses a profile payload without an id and login',async()=>{
+ const state=session.newNonce();oauth.getGitHubOAuthToken=async()=>'synthetic-provider-fixture';
+ axios.get=async()=>({data:{message:'Bad credentials'}});let saved=false;User.findOne=async()=>({save:async()=>{saved=true}});
+ const res=response();await controller.handleGitHubOAuthCallback({headers:{cookie:`${session.STATE_COOKIE}=${state}; ${session.VERIFIER_COOKIE}=${session.newNonce()}`},query:{state,code:'synthetic-code'}},res);
+ assert.equal(res.url,'http://localhost:4200/github-integration?error=oauth_failed');assert.equal(saved,false);
+});
+test('sign-out ends the server session but keeps the GitHub link',async()=>{
+ const value=session.newNonce();const user={_id:'synthetic',sessionHash:session.sessionHash(value),sessionExpiresAt:new Date(Date.now()+1000),save:async()=>{user.saved=true}};
+ User.findOne=async()=>user;let removed=false;Integration.deleteMany=async()=>{removed=true};axios.delete=async()=>{removed=true};
+ const res=response();await controller.endSession({headers:{cookie:`${session.SESSION_COOKIE}=${value}`}},res);
+ assert.equal(res.statusCode,204);assert.equal(user.sessionHash,undefined);assert.equal(user.sessionExpiresAt,undefined);assert.ok(user.saved);
+ assert.ok(res.cleared.includes(session.SESSION_COOKIE));assert.equal(removed,false);
+ const anonymous=response();User.findOne=async()=>null;await controller.endSession({headers:{}},anonymous);
+ assert.equal(anonymous.statusCode,204);assert.ok(anonymous.cleared.includes(session.SESSION_COOKIE));
 });

@@ -40,9 +40,14 @@ export const handleGitHubOAuthCallback = async (req: Request, res: Response): Pr
   try {
     const accessToken = await getGitHubOAuthToken(code, appConfig.oauthCallbackUrl, verifier);
     const profile = await axios.get(`${appConfig.githubApiBaseUrl}/user`, {headers: {Authorization: `Bearer ${accessToken}`}, timeout: 10000});
-    const {id: githubId, login: username} = profile.data;
+    const {id, login: username} = profile.data ?? {};
+    if ((typeof id !== 'number' && typeof id !== 'string') || typeof username !== 'string') {
+      throw new Error('Unexpected GitHub profile payload');
+    }
+    const githubId = String(id);
     let user = await User.findOne({githubId});
     if (!user) user = new User({githubId, username});
+    user.username = username;
     const session = newNonce();
     user.accessToken = encryptToken(accessToken, appConfig.tokenEncryptionKey);
     user.sessionHash = sessionHash(session);
@@ -66,7 +71,17 @@ export const checkStatus = async (req: Request, res: Response): Promise<void> =>
   const user = await currentUser(req);
   if (!user) {res.status(401).json({isConnected: false, message: 'Connect GitHub to create a session'});return;}
   const integration = await Integration.findOne({userId: user._id});
-  res.json({isConnected: Boolean(integration), connectionDate: integration?.connectedAt ?? null});
+  res.json({isConnected: Boolean(integration), username: user.username, connectionDate: integration?.connectedAt ?? null});
+};
+export const endSession = async (req: Request, res: Response): Promise<void> => {
+  const user = await currentUser(req);
+  if (user) {
+    user.sessionHash = undefined;
+    user.sessionExpiresAt = undefined;
+    await user.save();
+  }
+  res.clearCookie(SESSION_COOKIE, cookieOptions());
+  res.status(204).end();
 };
 // GitHub answers 404 when the token is already gone (the user revoked the app on
 // github.com), but also when the app credentials are wrong. Only a token that GitHub
