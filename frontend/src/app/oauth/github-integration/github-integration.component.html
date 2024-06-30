@@ -6,9 +6,9 @@
     <div class="card-heading"><h2>GitHub</h2><span class="status">{{ isConnected ? 'Connected' : 'Not connected' }}</span></div>
     <p *ngIf="!isConnected">Connect an account to inspect its connection status. The app requests profile access, not repository synchronization.</p>
     <p *ngIf="isConnected">Connected as {{ username }} on {{ connectionDate }}. No repository synchronization is performed.</p>
-    <button *ngIf="!isConnected" mat-flat-button color="primary" (click)="connect()">Connect GitHub</button>
-    <button *ngIf="isConnected" mat-stroked-button color="warn" [disabled]="loading" (click)="removeIntegration()">{{ loading ? 'Working…' : 'Revoke and remove' }}</button>
-    <button *ngIf="isConnected" mat-button [disabled]="loading" (click)="signOut()">Sign out</button>
+    <button *ngIf="!isConnected" class="primary" (click)="connect()">Connect GitHub</button>
+    <button *ngIf="isConnected" class="danger" [disabled]="loading" (click)="removeIntegration()">{{ loading ? 'Working…' : 'Revoke and remove' }}</button>
+    <button *ngIf="isConnected" class="quiet" [disabled]="loading" (click)="signOut()">Sign out</button>
     <p *ngIf="error" role="alert" class="error">{{ error }}</p>
   </section>
   <p class="note">Local development prototype · OAuth tokens stay on the API server. The browser uses an HttpOnly session cookie.</p>

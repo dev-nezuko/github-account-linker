@@ -3,5 +3,6 @@ import { GithubIntegrationComponent } from './oauth/github-integration/github-in
 
 export const routes: Routes = [
   { path: '', redirectTo: '/github-integration', pathMatch: 'full' },
-  { path: 'github-integration', component: GithubIntegrationComponent }
+  { path: 'github-integration', component: GithubIntegrationComponent },
+  { path: '**', redirectTo: '/github-integration' },
 ];

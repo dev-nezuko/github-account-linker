@@ -1,12 +1,5 @@
 import { bootstrapApplication } from '@angular/platform-browser';
-import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'; // Correct imports for HttpClient
 import { AppComponent } from './app/app.component';
-import { provideAnimations } from '@angular/platform-browser/animations';
+import { appConfig } from './app/app.config';
 
-bootstrapApplication(AppComponent, {
-  providers: [
-    provideAnimations(),
-    provideHttpClient(withInterceptorsFromDi()), // Properly provide HttpClient here
-  ],
-})
-  .catch(err => console.error(err));
+bootstrapApplication(AppComponent, appConfig).catch(err => console.error(err));

@@ -1,22 +1,20 @@
-import { Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { GithubAuthService } from '../github-auth.service';
-import { MatButtonModule } from '@angular/material/button';
-import { isPlatformBrowser, NgIf } from '@angular/common';
+import { NgIf } from '@angular/common';
 const CALLBACK_ERRORS: Record<string, string> = {
   access_denied: 'GitHub authorization was cancelled. Nothing was linked.',
   invalid_state: 'That sign-in attempt expired or did not start here. Start connecting again.',
 };
 
-@Component({selector: 'app-github-integration', templateUrl: './github-integration.component.html', styleUrls: ['./github-integration.component.css'], standalone: true, imports: [MatButtonModule, NgIf]})
+@Component({selector: 'app-github-integration', templateUrl: './github-integration.component.html', styleUrls: ['./github-integration.component.css'], standalone: true, imports: [NgIf]})
 export class GithubIntegrationComponent implements OnInit {
   isConnected = false;
   connectionDate: string | null = null;
   username: string | null = null;
   error = '';
   loading = false;
-  constructor(private githubAuthService: GithubAuthService, @Inject(PLATFORM_ID) private platformId: Object) {}
+  constructor(private githubAuthService: GithubAuthService) {}
   ngOnInit(): void {
-    if (!isPlatformBrowser(this.platformId)) return;
     // Discard credentials from the former URL/localStorage flow without reading or reusing them.
     localStorage.removeItem('accessToken');
     const url = new URL(window.location.href);
