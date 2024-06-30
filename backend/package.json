@@ -15,7 +15,7 @@
     "lint": "eslint .",
     "test:e2e": "npm run build && node --test --test-concurrency=1 tests/e2e/*.e2e.cjs"
   },
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "axios": "^1.21.0",
     "express": "^5.3.0",
