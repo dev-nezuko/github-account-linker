@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import type { Request, CookieOptions } from 'express';
+import appConfig from '../config/appConfig';
 export const VERIFIER_COOKIE = 'github_oauth_verifier';
 export const pkceChallenge = (value: string): string => createHash('sha256').update(value).digest('base64url');
 export const STATE_COOKIE = 'github_oauth_state';
@@ -7,7 +8,7 @@ export const SESSION_COOKIE = 'github_link_session';
 export const SESSION_MS = 8 * 60 * 60 * 1000;
 export const newNonce = (): string => randomBytes(32).toString('hex');
 export const sessionHash = (value: string): string => createHash('sha256').update(value).digest('hex');
-export const cookieOptions = (): CookieOptions => ({httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/api/github'});
+export const cookieOptions = (): CookieOptions => ({httpOnly: true, sameSite: 'lax', secure: appConfig.secureCookies, path: '/api/github'});
 export function readCookie(req: Request, name: string): string | undefined {
   for (const part of (req.headers.cookie || '').split(';')) {
     const index = part.indexOf('=');

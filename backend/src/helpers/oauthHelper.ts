@@ -13,7 +13,7 @@ export const getGitHubOAuthToken = async (
 ): Promise<string> => {
   try {
     const response = await axios.post(
-      appConfig.githubApiUrl,
+      appConfig.githubTokenUrl,
       {
         client_id: appConfig.githubClientId,
         client_secret: appConfig.githubClientSecret,

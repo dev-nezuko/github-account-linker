@@ -6,15 +6,13 @@ import appConfig from '../config/appConfig';
 import { getGitHubOAuthToken } from '../helpers/oauthHelper';
 import { STATE_COOKIE, VERIFIER_COOKIE, pkceChallenge, SESSION_COOKIE, SESSION_MS, newNonce, sessionHash, cookieOptions, readCookie, validState } from '../helpers/session';
 
-const redirectUri = 'http://localhost:3000/api/github/callback';
-const frontendUri = 'http://localhost:4200/github-integration';
 export const initiateGitHubOAuth = (_req: Request, res: Response): void => {
   const state = newNonce();
   const verifier = newNonce();
   res.cookie(VERIFIER_COOKIE, verifier, {...cookieOptions(), maxAge: 10 * 60 * 1000});
   res.cookie(STATE_COOKIE, state, {...cookieOptions(), maxAge: 10 * 60 * 1000});
-  const params = new URLSearchParams({client_id: appConfig.githubClientId, redirect_uri: redirectUri, scope: 'read:user', state, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256'});
-  res.redirect(`https://github.com/login/oauth/authorize?${params}`);
+  const params = new URLSearchParams({client_id: appConfig.githubClientId, redirect_uri: appConfig.oauthCallbackUrl, scope: 'read:user', state, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256'});
+  res.redirect(`${appConfig.githubAuthorizeUrl}?${params}`);
 };
 export const handleGitHubOAuthCallback = async (req: Request, res: Response): Promise<void> => {
   const expected = readCookie(req, STATE_COOKIE);
@@ -29,8 +27,8 @@ export const handleGitHubOAuthCallback = async (req: Request, res: Response): Pr
     res.status(400).json({message: 'Missing or invalid GitHub OAuth code'}); return;
   }
   try {
-    const accessToken = await getGitHubOAuthToken(code, redirectUri, verifier);
-    const profile = await axios.get('https://api.github.com/user', {headers: {Authorization: accessToken}, timeout: 10000});
+    const accessToken = await getGitHubOAuthToken(code, appConfig.oauthCallbackUrl, verifier);
+    const profile = await axios.get(`${appConfig.githubApiBaseUrl}/user`, {headers: {Authorization: accessToken}, timeout: 10000});
     const {id: githubId, login: username} = profile.data;
     let user = await User.findOne({githubId});
     if (!user) user = new User({githubId, username});
@@ -41,11 +39,11 @@ export const handleGitHubOAuthCallback = async (req: Request, res: Response): Pr
     await user.save();
     await Integration.updateOne({userId: user._id}, {$set: {provider: 'GitHub', connectedAt: new Date()}}, {upsert: true});
     res.cookie(SESSION_COOKIE, session, {...cookieOptions(), maxAge: SESSION_MS});
-    res.redirect(frontendUri);
+    res.redirect(appConfig.frontendUrl);
   } catch {
     // Axios errors can contain client credentials and Authorization headers.
     console.error('GitHub OAuth callback failed');
-    res.redirect(`${frontendUri}?error=oauth_failed`);
+    res.redirect(`${appConfig.frontendUrl}?error=oauth_failed`);
   }
 };
 async function currentUser(req: Request) {
@@ -64,7 +62,7 @@ export const removeIntegration = async (req: Request, res: Response): Promise<vo
   if (!user) {res.status(401).json({message: 'Connect GitHub to create a session'});return;}
   try {
     const rawAccessToken = user.accessToken.replace(/^Bearer /, '');
-    await axios.delete(`https://api.github.com/applications/${appConfig.githubClientId}/token`, {
+    await axios.delete(`${appConfig.githubApiBaseUrl}/applications/${appConfig.githubClientId}/token`, {
       auth: {username: appConfig.githubClientId, password: appConfig.githubClientSecret},
       data: {access_token: rawAccessToken}, timeout: 10000,
     });

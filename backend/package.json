@@ -1,9 +1,10 @@
 {
   "name": "github-integration",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon src/app.ts",
+    "dev": "nodemon src/server.ts",
+    "start": "node dist/server.js",
     "test": "npm run build && node --test tests/*.test.cjs",
     "build": "tsc"
   },

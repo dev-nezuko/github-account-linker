@@ -1,6 +1,6 @@
 const {test, beforeEach} = require('node:test');
 const assert = require('node:assert/strict');
-Object.assign(process.env, {SERVER_PORT: '3000', DB_URL: 'mongodb://127.0.0.1:27017/synthetic', GITHUB_API_URL: 'https://github.com/login/oauth/access_token', GITHUB_CLIENT_ID: 'synthetic-client', GITHUB_CLIENT_SECRET: 'synthetic-fixture-placeholder'});
+Object.assign(process.env, {SERVER_PORT: '3000', DB_URL: 'mongodb://127.0.0.1:27017/synthetic', GITHUB_TOKEN_URL: 'http://oauth.test/login/oauth/access_token', GITHUB_AUTHORIZE_URL: 'http://oauth.test/login/oauth/authorize', GITHUB_API_BASE_URL: 'http://api.oauth.test', GITHUB_CLIENT_ID: 'synthetic-client', GITHUB_CLIENT_SECRET: 'synthetic-fixture-placeholder'});
 const session = require('../dist/helpers/session');
 const oauth = require('../dist/helpers/oauthHelper');
 const axios = require('axios').default;
@@ -14,6 +14,8 @@ test('authorization uses random state, PKCE and profile scope only', () => {
  const state=a.cookies.find(c=>c.name===session.STATE_COOKIE);const verifier=a.cookies.find(c=>c.name===session.VERIFIER_COOKIE);
  assert.equal(url.searchParams.get('state'),state.value);assert.equal(url.searchParams.get('code_challenge'),session.pkceChallenge(verifier.value));
  assert.equal(state.options.httpOnly,true);assert.notEqual(a.url,b.url);
+ assert.equal(`${url.origin}${url.pathname}`,'http://oauth.test/login/oauth/authorize');
+ assert.equal(url.searchParams.get('redirect_uri'),'http://localhost:3000/api/github/callback');
 });
 test('callback rejects missing or mismatched state before token exchange', async () => {
  let exchanges=0;oauth.getGitHubOAuthToken=async()=>{exchanges++;throw Error('must not run')};
