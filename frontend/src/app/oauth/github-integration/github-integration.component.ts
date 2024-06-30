@@ -1,12 +1,17 @@
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
 import { GithubAuthService } from '../github-auth.service';
-import { NgIf } from '@angular/common';
+
 const CALLBACK_ERRORS: Record<string, string> = {
   access_denied: 'GitHub authorization was cancelled. Nothing was linked.',
   invalid_state: 'That sign-in attempt expired or did not start here. Start connecting again.',
 };
 
-@Component({selector: 'app-github-integration', templateUrl: './github-integration.component.html', styleUrls: ['./github-integration.component.css'], standalone: true, imports: [NgIf]})
+@Component({
+  selector: 'app-github-integration',
+  templateUrl: './github-integration.component.html',
+  styleUrls: ['./github-integration.component.css'],
+  changeDetection: ChangeDetectionStrategy.Eager,
+})
 export class GithubIntegrationComponent implements OnInit {
   isConnected = false;
   connectionDate: string | null = null;
