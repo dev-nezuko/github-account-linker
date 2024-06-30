@@ -78,3 +78,19 @@ test('state-changing requests must come from the frontend origin', () => {
  assert.equal(run('DELETE','http://localhost:4200').passed,true);
  for (const origin of [undefined,'http://localhost:8080','http://localhost:4200.evil.test']) {const r=run('DELETE',origin);assert.equal(r.passed,false);assert.equal(r.res.statusCode,403);}
 });
+
+test('a token already revoked on GitHub still lets the user remove the link',async()=>{
+ const value=session.newNonce();User.findOne=async()=>({_id:'synthetic',accessToken:'Bearer synthetic-provider-fixture'});
+ const deleted=[];User.findOneAndDelete=async()=>{deleted.push('user')};Integration.deleteMany=async()=>{deleted.push('integration')};
+ axios.delete=async(url,options)=>{assert.ok(options.validateStatus(404));return {status:404}};
+ axios.get=async(url,options)=>{assert.equal(url,'http://api.oauth.test/user');assert.equal(options.headers.Authorization,'Bearer synthetic-provider-fixture');return {status:401}};
+ const res=response();await controller.removeIntegration({headers:{cookie:`${session.SESSION_COOKIE}=${value}`}},res);
+ assert.deepEqual(deleted,['integration','user']);assert.equal(res.body.isConnected,false);
+});
+test('a 404 for a token that still works is treated as a failed revocation',async()=>{
+ const value=session.newNonce();User.findOne=async()=>({_id:'synthetic',accessToken:'Bearer synthetic-provider-fixture'});
+ let deleted=false;User.findOneAndDelete=async()=>{deleted=true};Integration.deleteMany=async()=>{deleted=true};
+ axios.delete=async()=>({status:404});axios.get=async()=>({status:200,data:{id:1}});
+ const res=response();await controller.removeIntegration({headers:{cookie:`${session.SESSION_COOKIE}=${value}`}},res);
+ assert.equal(res.statusCode,502);assert.equal(deleted,false);
+});

@@ -67,15 +67,31 @@ export const checkStatus = async (req: Request, res: Response): Promise<void> =>
   const integration = await Integration.findOne({userId: user._id});
   res.json({isConnected: Boolean(integration), connectionDate: integration?.connectedAt ?? null});
 };
+// GitHub answers 404 when the token is already gone (the user revoked the app on
+// github.com), but also when the app credentials are wrong. Only a token that GitHub
+// itself rejects counts as revoked; otherwise the local record is kept for a retry.
+const providerTokenIsDead = async (rawAccessToken: string): Promise<boolean> => {
+  const response = await axios.get(`${appConfig.githubApiBaseUrl}/user`, {
+    headers: {Authorization: `Bearer ${rawAccessToken}`}, timeout: 10000,
+    validateStatus: status => status === 200 || status === 401,
+  });
+  return response.status === 401;
+};
+const revokeProviderToken = async (rawAccessToken: string): Promise<void> => {
+  const response = await axios.delete(`${appConfig.githubApiBaseUrl}/applications/${appConfig.githubClientId}/token`, {
+    auth: {username: appConfig.githubClientId, password: appConfig.githubClientSecret},
+    data: {access_token: rawAccessToken}, timeout: 10000,
+    validateStatus: status => status === 204 || status === 404,
+  });
+  if (response.status === 404 && !(await providerTokenIsDead(rawAccessToken))) {
+    throw new Error('GitHub refused to revoke a live token');
+  }
+};
 export const removeIntegration = async (req: Request, res: Response): Promise<void> => {
   const user = await currentUser(req);
   if (!user) {res.status(401).json({message: 'Connect GitHub to create a session'});return;}
   try {
-    const rawAccessToken = user.accessToken.replace(/^Bearer /, '');
-    await axios.delete(`${appConfig.githubApiBaseUrl}/applications/${appConfig.githubClientId}/token`, {
-      auth: {username: appConfig.githubClientId, password: appConfig.githubClientSecret},
-      data: {access_token: rawAccessToken}, timeout: 10000,
-    });
+    await revokeProviderToken(user.accessToken.replace(/^Bearer /, ''));
     await Integration.deleteMany({userId: user._id});
     await User.findOneAndDelete({_id: user._id});
     res.clearCookie(SESSION_COOKIE, cookieOptions());
