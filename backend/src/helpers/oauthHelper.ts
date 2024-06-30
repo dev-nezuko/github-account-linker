@@ -1,11 +1,6 @@
 import axios from 'axios';
 import appConfig from '../config/appConfig';
 
-/**
- * Exchanges the short‑lived GitHub OAuth `code` for an access token.
- * This helper normalises the response into a `Bearer` token string and
- * surfaces clear errors so API handlers can return meaningful messages.
- */
 export const getGitHubOAuthToken = async (
   code: string,
   redirectUri: string,
@@ -29,13 +24,12 @@ export const getGitHubOAuthToken = async (
       },
     );
 
-    if (!response.data?.access_token) {
-      // Explicit guard helps when GitHub responds with an error payload
-      // so we fail fast instead of silently returning an undefined token.
+    // GitHub reports a bad code or verifier as HTTP 200 with an `error` field.
+    if (typeof response.data?.access_token !== 'string' || !response.data.access_token) {
       throw new Error('GitHub OAuth response did not include an access token');
     }
 
-    return `Bearer ${response.data.access_token}`;
+    return response.data.access_token;
   } catch {
     throw new Error('Failed to exchange GitHub OAuth code');
   }

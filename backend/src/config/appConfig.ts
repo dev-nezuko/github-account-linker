@@ -22,6 +22,14 @@ const readUrl = (keys: string[], fallback: string): string => {
   return url.toString().replace(/\/$/, '');
 };
 
+const readKey = (): Buffer => {
+  const value = readEnv(['TOKEN_ENCRYPTION_KEY']);
+  if (!/^[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error('TOKEN_ENCRYPTION_KEY must be 64 hex characters, e.g. the output of `openssl rand -hex 32`');
+  }
+  return Buffer.from(value, 'hex');
+};
+
 const oauthCallbackUrl = readUrl(['OAUTH_CALLBACK_URL'], 'http://localhost:4200/api/github/callback');
 const frontendUrl = readUrl(['FRONTEND_URL'], 'http://localhost:4200/github-integration');
 
@@ -31,6 +39,7 @@ const appConfig = {
   dbUrl: readEnv(['DB_URL']),
   githubClientId: readEnv(['GITHUB_CLIENT_ID']),
   githubClientSecret: readEnv(['GITHUB_CLIENT_SECRET']),
+  tokenEncryptionKey: readKey(),
   // GITHUB_API_URL is the variable's older name; it always held the token endpoint.
   githubTokenUrl: readUrl(['GITHUB_TOKEN_URL', 'GITHUB_API_URL'], 'https://github.com/login/oauth/access_token'),
   githubAuthorizeUrl: readUrl(['GITHUB_AUTHORIZE_URL'], 'https://github.com/login/oauth/authorize'),

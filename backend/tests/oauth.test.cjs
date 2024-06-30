@@ -1,8 +1,11 @@
 const {test, beforeEach} = require('node:test');
 const assert = require('node:assert/strict');
-Object.assign(process.env, {SERVER_PORT: '3000', DB_URL: 'mongodb://127.0.0.1:27017/synthetic', GITHUB_TOKEN_URL: 'http://oauth.test/login/oauth/access_token', GITHUB_AUTHORIZE_URL: 'http://oauth.test/login/oauth/authorize', GITHUB_API_BASE_URL: 'http://api.oauth.test', GITHUB_CLIENT_ID: 'synthetic-client', GITHUB_CLIENT_SECRET: 'synthetic-fixture-placeholder'});
+Object.assign(process.env, {SERVER_PORT: '3000', DB_URL: 'mongodb://127.0.0.1:27017/synthetic', GITHUB_TOKEN_URL: 'http://oauth.test/login/oauth/access_token', GITHUB_AUTHORIZE_URL: 'http://oauth.test/login/oauth/authorize', GITHUB_API_BASE_URL: 'http://api.oauth.test', GITHUB_CLIENT_ID: 'synthetic-client', GITHUB_CLIENT_SECRET: 'synthetic-fixture-placeholder', TOKEN_ENCRYPTION_KEY: '0f'.repeat(32)});
+const KEY=Buffer.from('0f'.repeat(32),'hex');
 const session = require('../dist/helpers/session');
 const oauth = require('../dist/helpers/oauthHelper');
+const cipher = require('../dist/helpers/tokenCipher');
+const exchangeToken = oauth.getGitHubOAuthToken;
 const axios = require('axios').default;
 const User = require('../dist/models/user').default;
 const Integration = require('../dist/models/integration').default;
@@ -38,12 +41,12 @@ test('a failed token exchange redirects with a generic error code', async () => 
  assert.equal(res.cookies.length,0);
 });
 test('successful callback keeps OAuth token out of browser URL and cookie', async () => {
- const state=session.newNonce();const verifier=session.newNonce();const provider='Bearer synthetic-provider-fixture';
+ const state=session.newNonce();const verifier=session.newNonce();const provider='synthetic-provider-fixture';
  oauth.getGitHubOAuthToken=async(code,redirect,value)=>{assert.equal(value,verifier);return provider};
- axios.get=async()=>({data:{id:'synthetic-id',login:'synthetic-user'}});
+ axios.get=async(url,options)=>{assert.equal(options.headers.Authorization,`Bearer ${provider}`);return {data:{id:'synthetic-id',login:'synthetic-user'}}};
  const user={_id:'synthetic-user-id',save:async()=>{}};User.findOne=async()=>user;Integration.updateOne=async()=>({});
  const res=response();await controller.handleGitHubOAuthCallback({headers:{cookie:`${session.STATE_COOKIE}=${state}; ${session.VERIFIER_COOKIE}=${verifier}`},query:{state,code:'synthetic-code'}},res);
- assert.equal(res.url,'http://localhost:4200/github-integration');assert.equal(user.accessToken,provider);
+ assert.equal(res.url,'http://localhost:4200/github-integration');assert.ok(!user.accessToken.includes(provider));assert.equal(cipher.decryptToken(user.accessToken,KEY),provider);
  const cookie=res.cookies.find(c=>c.name===session.SESSION_COOKIE);assert.equal(cookie.options.httpOnly,true);assert.equal(cookie.options.sameSite,'lax');assert.equal(user.sessionHash,session.sessionHash(cookie.value));
  assert.ok(!JSON.stringify(res.cookies).includes(provider));assert.ok(user.sessionExpiresAt > new Date());
 });
@@ -93,4 +96,28 @@ test('a 404 for a token that still works is treated as a failed revocation',asyn
  axios.delete=async()=>({status:404});axios.get=async()=>({status:200,data:{id:1}});
  const res=response();await controller.removeIntegration({headers:{cookie:`${session.SESSION_COOKIE}=${value}`}},res);
  assert.equal(res.statusCode,502);assert.equal(deleted,false);
+});
+
+test('stored tokens are AES-GCM sealed, tamper-evident and still read legacy rows',()=>{
+ const sealed=cipher.encryptToken('synthetic-provider-fixture',KEY);
+ assert.match(sealed,/^v1\./);assert.notEqual(sealed,cipher.encryptToken('synthetic-provider-fixture',KEY));
+ assert.equal(cipher.decryptToken(sealed,KEY),'synthetic-provider-fixture');
+ const parts=sealed.split('.');parts[2]=Buffer.from('tampered').toString('base64url');
+ assert.throws(()=>cipher.decryptToken(parts.join('.'),KEY));
+ assert.throws(()=>cipher.decryptToken(sealed,Buffer.alloc(32)));
+ assert.equal(cipher.decryptToken('Bearer legacy-fixture',KEY),'legacy-fixture');
+});
+test('revocation decrypts the stored token before sending it to GitHub',async()=>{
+ const value=session.newNonce();User.findOne=async()=>({_id:'synthetic',accessToken:cipher.encryptToken('sealed-fixture',KEY)});
+ User.findOneAndDelete=async()=>{};Integration.deleteMany=async()=>{};
+ let sent;axios.delete=async(url,options)=>{sent=options.data.access_token;return {status:204}};
+ const res=response();await controller.removeIntegration({headers:{cookie:`${session.SESSION_COOKIE}=${value}`}},res);
+ assert.equal(sent,'sealed-fixture');assert.equal(res.body.isConnected,false);
+});
+test('token exchange sends the PKCE verifier and rejects error payloads',async()=>{
+ let body;axios.post=async(url,data)=>{body=data;return {data:{access_token:'exchanged-fixture'}}};
+ assert.equal(await exchangeToken('code-fixture','http://localhost:4200/api/github/callback','v'.repeat(64)),'exchanged-fixture');
+ assert.equal(body.code_verifier,'v'.repeat(64));assert.equal(body.redirect_uri,'http://localhost:4200/api/github/callback');
+ axios.post=async()=>({data:{error:'bad_verification_code'}});
+ await assert.rejects(exchangeToken('code-fixture','http://localhost:4200/api/github/callback','v'.repeat(64)));
 });

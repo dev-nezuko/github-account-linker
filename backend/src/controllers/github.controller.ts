@@ -4,6 +4,7 @@ import User from '../models/user';
 import Integration from '../models/integration';
 import appConfig from '../config/appConfig';
 import { getGitHubOAuthToken } from '../helpers/oauthHelper';
+import { decryptToken, encryptToken } from '../helpers/tokenCipher';
 import { STATE_COOKIE, VERIFIER_COOKIE, pkceChallenge, SESSION_COOKIE, SESSION_MS, newNonce, sessionHash, cookieOptions, readCookie, validState } from '../helpers/session';
 
 export const initiateGitHubOAuth = (_req: Request, res: Response): void => {
@@ -38,12 +39,12 @@ export const handleGitHubOAuthCallback = async (req: Request, res: Response): Pr
   }
   try {
     const accessToken = await getGitHubOAuthToken(code, appConfig.oauthCallbackUrl, verifier);
-    const profile = await axios.get(`${appConfig.githubApiBaseUrl}/user`, {headers: {Authorization: accessToken}, timeout: 10000});
+    const profile = await axios.get(`${appConfig.githubApiBaseUrl}/user`, {headers: {Authorization: `Bearer ${accessToken}`}, timeout: 10000});
     const {id: githubId, login: username} = profile.data;
     let user = await User.findOne({githubId});
     if (!user) user = new User({githubId, username});
     const session = newNonce();
-    user.accessToken = accessToken;
+    user.accessToken = encryptToken(accessToken, appConfig.tokenEncryptionKey);
     user.sessionHash = sessionHash(session);
     user.sessionExpiresAt = new Date(Date.now() + SESSION_MS);
     await user.save();
@@ -91,7 +92,7 @@ export const removeIntegration = async (req: Request, res: Response): Promise<vo
   const user = await currentUser(req);
   if (!user) {res.status(401).json({message: 'Connect GitHub to create a session'});return;}
   try {
-    await revokeProviderToken(user.accessToken.replace(/^Bearer /, ''));
+    await revokeProviderToken(decryptToken(user.accessToken, appConfig.tokenEncryptionKey));
     await Integration.deleteMany({userId: user._id});
     await User.findOneAndDelete({_id: user._id});
     res.clearCookie(SESSION_COOKIE, cookieOptions());
