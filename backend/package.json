@@ -12,7 +12,8 @@
     "start": "node --env-file-if-exists=.env dist/server.js",
     "dev": "tsc && (tsc --watch --preserveWatchOutput & node --env-file-if-exists=.env --watch dist/server.js)",
     "test": "npm run build && node --test tests/*.test.cjs",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:e2e": "npm run build && node --test --test-concurrency=1 tests/e2e/*.e2e.cjs"
   },
   "license": "ISC",
   "dependencies": {
