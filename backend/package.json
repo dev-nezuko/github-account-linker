@@ -11,7 +11,8 @@
     "build": "tsc",
     "start": "node --env-file-if-exists=.env dist/server.js",
     "dev": "tsc && (tsc --watch --preserveWatchOutput & node --env-file-if-exists=.env --watch dist/server.js)",
-    "test": "npm run build && node --test tests/*.test.cjs"
+    "test": "npm run build && node --test tests/*.test.cjs",
+    "lint": "eslint ."
   },
   "license": "ISC",
   "dependencies": {
@@ -20,8 +21,11 @@
     "mongoose": "^9.12.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.6",
     "@types/node": "^22.20.5",
-    "typescript": "~6.0.3"
+    "eslint": "^10.14.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1"
   }
 }
