@@ -19,8 +19,23 @@ test('authorization uses random state, PKCE and profile scope only', () => {
 });
 test('callback rejects missing or mismatched state before token exchange', async () => {
  let exchanges=0;oauth.getGitHubOAuthToken=async()=>{exchanges++;throw Error('must not run')};
- for(const state of [undefined,'wrong']){const res=response();await controller.handleGitHubOAuthCallback({headers:{},query:{code:'synthetic',state}},res);assert.equal(res.statusCode,400);}
+ for(const state of [undefined,'wrong','b'.repeat(64)]){const res=response();await controller.handleGitHubOAuthCallback({headers:{cookie:`${session.STATE_COOKIE}=${'a'.repeat(64)}; ${session.VERIFIER_COOKIE}=${'c'.repeat(64)}`},query:{code:'synthetic',state}},res);assert.equal(res.url,'http://localhost:4200/github-integration?error=invalid_state');assert.deepEqual(res.cleared,[session.VERIFIER_COOKIE,session.STATE_COOKIE]);}
  assert.equal(exchanges,0);
+});
+test('callback sends a denied or code-less authorization back to the UI', async () => {
+ let exchanges=0;oauth.getGitHubOAuthToken=async()=>{exchanges++;throw Error('must not run')};
+ const state=session.newNonce();const cookie=`${session.STATE_COOKIE}=${state}; ${session.VERIFIER_COOKIE}=${session.newNonce()}`;
+ let res=response();await controller.handleGitHubOAuthCallback({headers:{cookie},query:{state,error:'access_denied',error_description:'The user has denied your application access.'}},res);
+ assert.equal(res.url,'http://localhost:4200/github-integration?error=access_denied');
+ res=response();await controller.handleGitHubOAuthCallback({headers:{cookie},query:{state,code:['a','b']}},res);
+ assert.equal(res.url,'http://localhost:4200/github-integration?error=invalid_callback');
+ assert.equal(exchanges,0);
+});
+test('a failed token exchange redirects with a generic error code', async () => {
+ const state=session.newNonce();oauth.getGitHubOAuthToken=async()=>{throw Error('synthetic exchange failure')};
+ const res=response();await controller.handleGitHubOAuthCallback({headers:{cookie:`${session.STATE_COOKIE}=${state}; ${session.VERIFIER_COOKIE}=${session.newNonce()}`},query:{state,code:'synthetic-code'}},res);
+ assert.equal(res.url,'http://localhost:4200/github-integration?error=oauth_failed');
+ assert.equal(res.cookies.length,0);
 });
 test('successful callback keeps OAuth token out of browser URL and cookie', async () => {
  const state=session.newNonce();const verifier=session.newNonce();const provider='Bearer synthetic-provider-fixture';

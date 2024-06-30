@@ -2,6 +2,11 @@ import { Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
 import { GithubAuthService } from '../github-auth.service';
 import { MatButtonModule } from '@angular/material/button';
 import { isPlatformBrowser, NgIf } from '@angular/common';
+const CALLBACK_ERRORS: Record<string, string> = {
+  access_denied: 'GitHub authorization was cancelled. Nothing was linked.',
+  invalid_state: 'That sign-in attempt expired or did not start here. Start connecting again.',
+};
+
 @Component({selector: 'app-github-integration', templateUrl: './github-integration.component.html', styleUrls: ['./github-integration.component.css'], standalone: true, imports: [MatButtonModule, NgIf]})
 export class GithubIntegrationComponent implements OnInit {
   isConnected = false;
@@ -14,7 +19,8 @@ export class GithubIntegrationComponent implements OnInit {
     // Discard credentials from the former URL/localStorage flow without reading or reusing them.
     localStorage.removeItem('accessToken');
     const url = new URL(window.location.href);
-    if (url.searchParams.has('error')) this.error = 'GitHub authorization failed. Try connecting again.';
+    const callbackError = url.searchParams.get('error');
+    if (callbackError) this.error = CALLBACK_ERRORS[callbackError] ?? 'GitHub authorization failed. Try connecting again.';
     if (url.search) window.history.replaceState(null, '', url.pathname);
     this.githubAuthService.getStatus().subscribe({next: status => {this.isConnected = status.isConnected;this.connectionDate = status.connectionDate;}, error: failure => {if (failure.status !== 401) this.error = 'Could not reach the local API. Check that it is running.';}});
   }

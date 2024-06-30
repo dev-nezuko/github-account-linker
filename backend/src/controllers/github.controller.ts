@@ -14,17 +14,27 @@ export const initiateGitHubOAuth = (_req: Request, res: Response): void => {
   const params = new URLSearchParams({client_id: appConfig.githubClientId, redirect_uri: appConfig.oauthCallbackUrl, scope: 'read:user', state, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256'});
   res.redirect(`${appConfig.githubAuthorizeUrl}?${params}`);
 };
+const redirectToFrontend = (res: Response, error?: string): void => {
+  const url = new URL(appConfig.frontendUrl);
+  if (error) url.searchParams.set('error', error);
+  res.redirect(url.toString());
+};
 export const handleGitHubOAuthCallback = async (req: Request, res: Response): Promise<void> => {
   const expected = readCookie(req, STATE_COOKIE);
   const verifier = readCookie(req, VERIFIER_COOKIE);
   res.clearCookie(VERIFIER_COOKIE, cookieOptions());
   res.clearCookie(STATE_COOKIE, cookieOptions());
+  // The callback is a top-level browser navigation, so failures go back to the UI
+  // with a fixed error code rather than ending on a bare JSON page.
   if (!validState(expected, req.query.state) || !verifier || !/^[a-f0-9]{64}$/.test(verifier)) {
-    res.status(400).json({message: 'Invalid or expired OAuth state. Start connecting again.'}); return;
+    redirectToFrontend(res, 'invalid_state'); return;
+  }
+  if (req.query.error !== undefined) {
+    redirectToFrontend(res, 'access_denied'); return;
   }
   const code = req.query.code;
   if (!code || typeof code !== 'string') {
-    res.status(400).json({message: 'Missing or invalid GitHub OAuth code'}); return;
+    redirectToFrontend(res, 'invalid_callback'); return;
   }
   try {
     const accessToken = await getGitHubOAuthToken(code, appConfig.oauthCallbackUrl, verifier);
@@ -39,11 +49,11 @@ export const handleGitHubOAuthCallback = async (req: Request, res: Response): Pr
     await user.save();
     await Integration.updateOne({userId: user._id}, {$set: {provider: 'GitHub', connectedAt: new Date()}}, {upsert: true});
     res.cookie(SESSION_COOKIE, session, {...cookieOptions(), maxAge: SESSION_MS});
-    res.redirect(appConfig.frontendUrl);
+    redirectToFrontend(res);
   } catch {
     // Axios errors can contain client credentials and Authorization headers.
     console.error('GitHub OAuth callback failed');
-    res.redirect(`${appConfig.frontendUrl}?error=oauth_failed`);
+    redirectToFrontend(res, 'oauth_failed');
   }
 };
 async function currentUser(req: Request) {
