@@ -1,0 +1,34 @@
+<div class="container">
+  <mat-accordion>
+    <mat-expansion-panel (opened)="panelOpenState.set(true)" (closed)="panelOpenState.set(false)">
+      <mat-expansion-panel-header>
+        <mat-icon>github</mat-icon>
+        <span class="github-icon">GitHub</span>
+        <mat-icon class="github-icon" *ngIf="isConnected" color="primary">check_circle</mat-icon>
+        <span class="spacer"></span>
+        <div *ngIf="isConnected" class="light-grey-text">
+          <p class="mp-0">Admin: Last Synced: {{ connectionDate }}<br />Sync Type: full</p>
+        </div>
+      </mat-expansion-panel-header>
+      <div *ngIf="!isConnected">
+        <div style="text-align: center">
+          <button mat-flat-button color="primary" (click)="connect()">Connect</button>
+          <h1 class="bold-text">Connect Stredio to GitHub</h1>
+        </div>
+      </div>
+
+      <div *ngIf="isConnected">
+        <div class="d-flex">
+          <button
+            mat-flat-button
+            color="primary"
+            (click)="removeIntegration()"
+            style="margin-top: 16px; display: block"
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    </mat-expansion-panel>
+  </mat-accordion>
+</div>
