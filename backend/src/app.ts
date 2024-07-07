@@ -25,13 +25,17 @@ app.use(express.json());
 
 app.get('/', (req, res) => res.send('Server is running'));
 app.use('/api/github', cors(corsOptions), githubRoutes);
+app.use((_error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('API request failed');
+  res.status(500).json({message: 'Request failed'});
+});
 
 mongoose
   .connect(appConfig.dbUrl!)
   .then(() => {
     console.log('MongoDB connected');
-    app.listen(port, () => {
+    app.listen(port, '127.0.0.1', () => {
       console.log(`Server running http://localhost:${port}`);
     });
   })
-  .catch((err) => console.log('MongoDB connection error:', err));
+  .catch(() => console.error('MongoDB connection failed'));

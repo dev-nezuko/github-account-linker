@@ -1,34 +1,14 @@
-<div class="container">
-  <mat-accordion>
-    <mat-expansion-panel (opened)="panelOpenState.set(true)" (closed)="panelOpenState.set(false)">
-      <mat-expansion-panel-header>
-        <mat-icon>github</mat-icon>
-        <span class="github-icon">GitHub</span>
-        <mat-icon class="github-icon" *ngIf="isConnected" color="primary">check_circle</mat-icon>
-        <span class="spacer"></span>
-        <div *ngIf="isConnected" class="light-grey-text">
-          <p class="mp-0">Admin: Last Synced: {{ connectionDate }}<br />Sync Type: full</p>
-        </div>
-      </mat-expansion-panel-header>
-      <div *ngIf="!isConnected">
-        <div style="text-align: center">
-          <button mat-flat-button color="primary" (click)="connect()">Connect</button>
-          <h1 class="bold-text">Connect Stredio to GitHub</h1>
-        </div>
-      </div>
-
-      <div *ngIf="isConnected">
-        <div class="d-flex">
-          <button
-            mat-flat-button
-            color="primary"
-            (click)="removeIntegration()"
-            style="margin-top: 16px; display: block"
-          >
-            Remove
-          </button>
-        </div>
-      </div>
-    </mat-expansion-panel>
-  </mat-accordion>
-</div>
+<main class="integration-page">
+  <p class="eyebrow">ACCOUNT CONNECTION DEMO</p>
+  <h1>Your GitHub connection,<br />in one place.</h1>
+  <p class="intro">An Angular and Express prototype for authorizing a GitHub profile, checking its connection, and revoking access.</p>
+  <section class="connection-card">
+    <div class="card-heading"><h2>GitHub</h2><span class="status">{{ isConnected ? 'Connected' : 'Not connected' }}</span></div>
+    <p *ngIf="!isConnected">Connect an account to inspect its connection status. The app requests profile access, not repository synchronization.</p>
+    <p *ngIf="isConnected">Connected on {{ connectionDate }}. No repository synchronization is performed.</p>
+    <button *ngIf="!isConnected" mat-flat-button color="primary" (click)="connect()">Connect GitHub</button>
+    <button *ngIf="isConnected" mat-stroked-button color="warn" [disabled]="loading" (click)="removeIntegration()">{{ loading ? 'Removing…' : 'Revoke and remove' }}</button>
+    <p *ngIf="error" role="alert" class="error">{{ error }}</p>
+  </section>
+  <p class="note">Local development prototype · OAuth tokens stay on the API server. The browser uses an HttpOnly session cookie.</p>
+</main>

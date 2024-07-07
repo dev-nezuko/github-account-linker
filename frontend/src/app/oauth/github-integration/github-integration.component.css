@@ -1,34 +1,7 @@
-.container {
-  margin: 10px;
-}
-.spacer {
-  flex: 1 1 auto;
-}
-.github-icon {
-  display: inline-block;
-  margin-right: 10px;
-}
-.bold-text {
-  margin-top: 10px;
-  color: #4050b5;
-  font-weight: 500;
-}
-.light-grey-text {
-  margin: 0px 10px 0 0;
-  font-size: 10px;
-  font-weight: 200;
-  padding: 0;
-  line-height: 12px;
-  text-align: right;
-  color: slategrey;
-  display: flex;
-  align-items: center;
-}
-.d-flex {
-  display: flex;
-  justify-content: flex-end;
-}
-.mp-0 {
-  margin: 0;
-  padding: 0;
-}
+.integration-page { max-width: 850px; margin: 60px auto; padding: 0 24px; color: #24344a; font-family: Arial, sans-serif; }
+.eyebrow { font-size: 11px; letter-spacing: .16em; font-weight: bold; color: #52638b; }
+h1 { font-size: clamp(32px,5vw,48px); font-weight: 600; line-height: 1.15; letter-spacing: -.04em; margin: 20px 0; }
+.intro { font-size: 16px; line-height: 1.7; color: #5b6b7d; max-width: 650px; }
+.connection-card { padding: 28px; margin-top: 30px; border: 1px solid #d8dfea; border-radius: 12px; background: #fff; }
+.card-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; }.card-heading h2 { font-size: 22px; margin: 0; }.status { font-size: 12px; background: #edf0f7; padding: 7px 12px; border-radius: 20px; }
+.connection-card p { font-size: 14px; color: #56677a; line-height: 1.8; margin: 22px 0; }.note { font-size: 12px; color: #62738a; line-height: 1.7; margin-top: 24px; }.connection-card .error { color: #a52d32; background: #ffefef; border-radius: 5px; padding: 12px; }

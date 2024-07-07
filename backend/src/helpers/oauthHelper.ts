@@ -9,6 +9,7 @@ import appConfig from '../config/appConfig';
 export const getGitHubOAuthToken = async (
   code: string,
   redirectUri: string,
+  verifier: string,
 ): Promise<string> => {
   try {
     const response = await axios.post(
@@ -18,11 +19,13 @@ export const getGitHubOAuthToken = async (
         client_secret: appConfig.githubClientSecret,
         code,
         redirect_uri: redirectUri,
+        code_verifier: verifier,
       },
       {
         headers: {
           Accept: 'application/json',
         },
+        timeout: 10000,
       },
     );
 
@@ -33,13 +36,7 @@ export const getGitHubOAuthToken = async (
     }
 
     return `Bearer ${response.data.access_token}`;
-  } catch (error) {
-    // Wrapping the original error makes it easier for callers to
-    // distinguish OAuth failures from generic server issues.
-    throw new Error(
-      `Failed to exchange GitHub OAuth code for access token: ${
-        (error as Error).message
-      }`,
-    );
+  } catch {
+    throw new Error('Failed to exchange GitHub OAuth code');
   }
 };

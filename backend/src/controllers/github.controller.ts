@@ -4,167 +4,76 @@ import User from '../models/user';
 import Integration from '../models/integration';
 import appConfig from '../config/appConfig';
 import { getGitHubOAuthToken } from '../helpers/oauthHelper';
+import { STATE_COOKIE, VERIFIER_COOKIE, pkceChallenge, SESSION_COOKIE, SESSION_MS, newNonce, sessionHash, cookieOptions, readCookie, validState } from '../helpers/session';
 
-const clientId = appConfig.githubClientId;
-const clientSecret = appConfig.githubClientSecret;
 const redirectUri = 'http://localhost:3000/api/github/callback';
-
-/**
- * Starts the GitHub OAuth dance by redirecting the browser to GitHub.
- * Keeping this logic small and deterministic simplifies testing and
- * reduces the risk of leaking server‑side state.
- */
+const frontendUri = 'http://localhost:4200/github-integration';
 export const initiateGitHubOAuth = (_req: Request, res: Response): void => {
-  const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
-    redirectUri,
-  )}&scope=repo,user`;
-
-  res.redirect(githubAuthUrl);
+  const state = newNonce();
+  const verifier = newNonce();
+  res.cookie(VERIFIER_COOKIE, verifier, {...cookieOptions(), maxAge: 10 * 60 * 1000});
+  res.cookie(STATE_COOKIE, state, {...cookieOptions(), maxAge: 10 * 60 * 1000});
+  const params = new URLSearchParams({client_id: appConfig.githubClientId, redirect_uri: redirectUri, scope: 'read:user', state, code_challenge: pkceChallenge(verifier), code_challenge_method: 'S256'});
+  res.redirect(`https://github.com/login/oauth/authorize?${params}`);
 };
-
-/**
- * Handles the OAuth callback from GitHub, persists the user and
- * integration metadata, and then returns control back to the SPA.
- * All failure branches either redirect with a neutral state or send
- * a clear HTTP error to keep client behaviour predictable.
- */
-export const handleGitHubOAuthCallback = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
-  const { code } = req.query;
-
+export const handleGitHubOAuthCallback = async (req: Request, res: Response): Promise<void> => {
+  const expected = readCookie(req, STATE_COOKIE);
+  const verifier = readCookie(req, VERIFIER_COOKIE);
+  res.clearCookie(VERIFIER_COOKIE, cookieOptions());
+  res.clearCookie(STATE_COOKIE, cookieOptions());
+  if (!validState(expected, req.query.state) || !verifier || !/^[a-f0-9]{64}$/.test(verifier)) {
+    res.status(400).json({message: 'Invalid or expired OAuth state. Start connecting again.'}); return;
+  }
+  const code = req.query.code;
   if (!code || typeof code !== 'string') {
-    res.status(400).json({ message: 'Missing or invalid GitHub OAuth code' });
-    return;
+    res.status(400).json({message: 'Missing or invalid GitHub OAuth code'}); return;
   }
-
   try {
-    const accessToken = await getGitHubOAuthToken(code, redirectUri);
-
-    const userResponse = await axios.get('https://api.github.com/user', {
-      headers: {
-        Authorization: accessToken,
-      },
-    });
-
-    const { id: githubId, login: username } = userResponse.data;
-
-    let user = await User.findOne({ githubId });
-    if (!user) {
-      user = new User({
-        username,
-        githubId,
-        accessToken,
-      });
-      await user.save();
-    } else {
-      // Keep the latest access token in sync so future calls use
-      // the freshest credentials.
-      user.accessToken = accessToken;
-      await user.save();
-    }
-
-    const integration = new Integration({
-      userId: user._id,
-      provider: 'GitHub',
-      connectedAt: new Date(),
-    });
-
-    await integration.save();
-
-    res.redirect(
-      `http://localhost:4200/github-integration?token=${encodeURIComponent(
-        accessToken,
-      )}`,
-    );
-  } catch (error) {
-    // In an OAuth flow it is safer to redirect back to the SPA
-    // than to leak internal error details to the browser.
-    // The client can then decide how to surface a generic failure.
-    console.error('GitHub OAuth Error:', error);
-    res.redirect('http://localhost:4200/github-integration');
+    const accessToken = await getGitHubOAuthToken(code, redirectUri, verifier);
+    const profile = await axios.get('https://api.github.com/user', {headers: {Authorization: accessToken}, timeout: 10000});
+    const {id: githubId, login: username} = profile.data;
+    let user = await User.findOne({githubId});
+    if (!user) user = new User({githubId, username});
+    const session = newNonce();
+    user.accessToken = accessToken;
+    user.sessionHash = sessionHash(session);
+    user.sessionExpiresAt = new Date(Date.now() + SESSION_MS);
+    await user.save();
+    await Integration.updateOne({userId: user._id}, {$set: {provider: 'GitHub', connectedAt: new Date()}}, {upsert: true});
+    res.cookie(SESSION_COOKIE, session, {...cookieOptions(), maxAge: SESSION_MS});
+    res.redirect(frontendUri);
+  } catch {
+    // Axios errors can contain client credentials and Authorization headers.
+    console.error('GitHub OAuth callback failed');
+    res.redirect(`${frontendUri}?error=oauth_failed`);
   }
 };
-
-/**
- * Returns the current integration status for the caller based on the
- * provided access token. Responses are explicit about auth failures
- * so that the frontend can react accordingly.
- */
-export const checkStatus = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
-  const { authorization } = req.headers;
-
-  if (!authorization) {
-    res.status(401).json({ isConnected: false, message: 'Missing Authorization header' });
-    return;
-  }
-
-  const decodedToken = decodeURIComponent(authorization);
-  const user = await User.findOne({ accessToken: decodedToken });
-
-  if (!user) {
-    res.status(401).json({ isConnected: false, message: 'Invalid access token' });
-    return;
-  }
-
-  const integration = await Integration.findOne({ userId: user._id });
-
-  res.json({
-    isConnected: Boolean(integration),
-    connectionDate: integration?.connectedAt ?? null,
-  });
+async function currentUser(req: Request) {
+  const value = readCookie(req, SESSION_COOKIE);
+  if (!value || !/^[a-f0-9]{64}$/.test(value)) return null;
+  return User.findOne({sessionHash: sessionHash(value), sessionExpiresAt: {$gt: new Date()}});
+}
+export const checkStatus = async (req: Request, res: Response): Promise<void> => {
+  const user = await currentUser(req);
+  if (!user) {res.status(401).json({isConnected: false, message: 'Connect GitHub to create a session'});return;}
+  const integration = await Integration.findOne({userId: user._id});
+  res.json({isConnected: Boolean(integration), connectionDate: integration?.connectedAt ?? null});
 };
-
-/**
- * Revokes the remote GitHub token and deletes the local integration
- * state. Explicit responses allow the frontend to distinguish between
- * auth errors and idempotent removal attempts.
- */
-export const removeIntegration = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
-  const { authorization } = req.headers;
-
-  if (!authorization) {
-    res.status(401).json({ message: 'Missing Authorization header' });
-    return;
-  }
-
-  const decodedToken = decodeURIComponent(authorization);
-
+export const removeIntegration = async (req: Request, res: Response): Promise<void> => {
+  const user = await currentUser(req);
+  if (!user) {res.status(401).json({message: 'Connect GitHub to create a session'});return;}
   try {
-    const user = await User.findOne({ accessToken: decodedToken });
-
-    if (!user) {
-      res.status(404).json({ message: 'GitHub integration not found for user' });
-      return;
-    }
-
-    const tokenParts = decodedToken.split(' ');
-    const rawAccessToken = tokenParts.length === 2 ? tokenParts[1] : decodedToken;
-
-    await axios.delete(`https://api.github.com/applications/${clientId}/token`, {
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString(
-          'base64',
-        )}`,
-      },
-      data: {
-        access_token: rawAccessToken,
-      },
+    const rawAccessToken = user.accessToken.replace(/^Bearer /, '');
+    await axios.delete(`https://api.github.com/applications/${appConfig.githubClientId}/token`, {
+      auth: {username: appConfig.githubClientId, password: appConfig.githubClientSecret},
+      data: {access_token: rawAccessToken}, timeout: 10000,
     });
-
-    await User.findOneAndDelete({ _id: user._id });
-    await Integration.findOneAndDelete({ userId: user._id });
-
-    res.json({ isConnected: false });
-  } catch (error) {
-    console.error('Error removing GitHub integration:', error);
-    res.status(502).json({ message: 'Failed to revoke GitHub token' });
+    await Integration.deleteMany({userId: user._id});
+    await User.findOneAndDelete({_id: user._id});
+    res.clearCookie(SESSION_COOKIE, cookieOptions());
+    res.json({isConnected: false});
+  } catch {
+    console.error('GitHub token revocation failed');
+    res.status(502).json({message: 'Failed to revoke GitHub token; connection has been retained for retry'});
   }
 };
